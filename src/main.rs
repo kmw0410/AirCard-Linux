@@ -23,18 +23,9 @@ const PAGE_TITLES: [&str; 5] = [
     "settings.tooltip",
 ];
 
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
-enum ConnectionStatus {
-    #[default]
-    Waiting,
-    Connected,
-    Disconnected,
-}
-
 #[derive(Default)]
 struct State {
     device: Option<core::Device>,
-    connection_status: ConnectionStatus,
     image: Option<PathBuf>,
     theme: Option<PathBuf>,
     card_hash: String,
@@ -50,8 +41,6 @@ struct UiTexts {
     hash_entry: gtk::Entry,
     device_label: gtk::Label,
     status_label: gtk::Label,
-    status_dot: gtk::DrawingArea,
-    dot_state: Rc<Cell<ConnectionStatus>>,
     image_label: gtk::Label,
     theme_label: gtk::Label,
     tools_label: gtk::Label,
@@ -71,8 +60,6 @@ impl UiTexts {
         self.content_page.set_title(title);
         self.hash_entry
             .set_placeholder_text(Some(i18n::tr(language, "wallet.hash_placeholder")));
-        self.dot_state.set(state.connection_status);
-        self.status_dot.queue_draw();
         if state.device.is_none() {
             self.device_label
                 .set_text(i18n::tr(language, "device.none"));
@@ -186,29 +173,14 @@ fn build_ui(app: &adw::Application) {
     nav.set_selection_mode(gtk::SelectionMode::Single);
     nav.set_activate_on_single_click(true);
     let mut nav_labels = Vec::new();
-    for (icon, key) in [
-        (
-            include_bytes!("../resources/icons/device.svg").as_slice(),
-            "device.tab",
-        ),
-        (
-            include_bytes!("../resources/icons/wallet.svg").as_slice(),
-            "wallet.tab",
-        ),
-        (
-            include_bytes!("../resources/icons/theme.svg").as_slice(),
-            "theme.tab",
-        ),
-        (
-            include_bytes!("../resources/icons/activity.svg").as_slice(),
-            "activity.tab",
-        ),
-        (
-            include_bytes!("../resources/icons/settings.svg").as_slice(),
-            "settings.tooltip",
-        ),
+    for key in [
+        "device.tab",
+        "wallet.tab",
+        "theme.tab",
+        "activity.tab",
+        "settings.tooltip",
     ] {
-        let (row, label) = sidebar_row(icon);
+        let (row, label) = sidebar_row();
         nav.append(&row);
         nav_labels.push((label, key));
     }
@@ -220,35 +192,9 @@ fn build_ui(app: &adw::Application) {
     sidebar_body.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     let status_badge = gtk::Box::new(gtk::Orientation::Horizontal, 9);
     status_badge.add_css_class("aircard-status");
-    let status_dot = gtk::DrawingArea::new();
-    let dot_state = Rc::new(Cell::new(ConnectionStatus::Waiting));
-    status_dot.set_size_request(8, 8);
-    status_dot.set_content_width(8);
-    status_dot.set_content_height(8);
-    status_dot.set_valign(gtk::Align::Center);
-    {
-        let dot_state = dot_state.clone();
-        status_dot.set_draw_func(move |_, cr, width, height| {
-            let (red, green, blue) = match dot_state.get() {
-                ConnectionStatus::Waiting => (0.56, 0.58, 0.60),
-                ConnectionStatus::Connected => (0.38, 0.76, 0.51),
-                ConnectionStatus::Disconnected => (0.88, 0.44, 0.44),
-            };
-            cr.set_source_rgb(red, green, blue);
-            cr.arc(
-                f64::from(width) / 2.0,
-                f64::from(height) / 2.0,
-                3.5,
-                0.0,
-                std::f64::consts::TAU,
-            );
-            let _ = cr.fill();
-        });
-    }
     let status_label = gtk::Label::new(None);
     status_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
     status_label.set_xalign(0.0);
-    status_badge.append(&status_dot);
     status_badge.append(&status_label);
     sidebar_body.append(&status_badge);
     sidebar_toolbar.set_content(Some(&sidebar_body));
@@ -454,8 +400,6 @@ fn build_ui(app: &adw::Application) {
         hash_entry: hash.clone(),
         device_label: device_label.clone(),
         status_label: status_label.clone(),
-        status_dot: status_dot.clone(),
-        dot_state: dot_state.clone(),
         image_label: image_label.clone(),
         theme_label: theme_label.clone(),
         tools_label,
@@ -514,24 +458,14 @@ fn build_ui(app: &adw::Application) {
         let overlay = overlay.clone();
         let label = device_label.clone();
         let status_label = status_label.clone();
-        let status_dot = status_dot.clone();
-        let dot_state = dot_state.clone();
         let language = language.clone();
         refresh.connect_clicked(move |_| match core::list_devices() {
             Ok(devices) if devices.is_empty() => {
                 let mut current = state.borrow_mut();
-                current.connection_status =
-                    if current.connection_status == ConnectionStatus::Waiting {
-                        ConnectionStatus::Waiting
-                    } else {
-                        ConnectionStatus::Disconnected
-                    };
                 current.device = None;
                 drop(current);
                 label.set_text(i18n::tr(language.get(), "device.none"));
                 status_label.set_text(i18n::tr(language.get(), "device.none"));
-                dot_state.set(state.borrow().connection_status);
-                status_dot.queue_draw();
                 toast(&overlay, i18n::tr(language.get(), "device.not_found"));
             }
             Ok(mut devices) => {
@@ -540,25 +474,14 @@ fn build_ui(app: &adw::Application) {
                 status_label.set_text(&d.name);
                 let mut current = state.borrow_mut();
                 current.device = Some(d);
-                current.connection_status = ConnectionStatus::Connected;
-                dot_state.set(current.connection_status);
-                status_dot.queue_draw();
                 toast(&overlay, i18n::tr(language.get(), "device.selected"));
             }
             Err(e) => {
                 let mut current = state.borrow_mut();
-                current.connection_status =
-                    if current.connection_status == ConnectionStatus::Waiting {
-                        ConnectionStatus::Waiting
-                    } else {
-                        ConnectionStatus::Disconnected
-                    };
                 current.device = None;
                 drop(current);
                 label.set_text(i18n::tr(language.get(), "device.none"));
                 status_label.set_text(i18n::tr(language.get(), "device.none"));
-                dot_state.set(state.borrow().connection_status);
-                status_dot.queue_draw();
                 toast(&overlay, e.to_string());
             }
         });
@@ -786,20 +709,14 @@ fn install_styles() {
     );
 }
 
-fn sidebar_row(svg: &'static [u8]) -> (gtk::ListBoxRow, gtk::Label) {
+fn sidebar_row() -> (gtk::ListBoxRow, gtk::Label) {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("aircard-nav-row");
-    let body = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let bytes = glib::Bytes::from_static(svg);
-    let icon = gtk::Image::from_gicon(&gio::BytesIcon::new(&bytes));
-    icon.set_pixel_size(18);
     let label = gtk::Label::new(None);
     label.set_hexpand(true);
     label.set_xalign(0.0);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    body.append(&icon);
-    body.append(&label);
-    row.set_child(Some(&body));
+    row.set_child(Some(&label));
     (row, label)
 }
 

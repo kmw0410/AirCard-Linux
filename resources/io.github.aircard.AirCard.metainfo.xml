@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.aircard.AirCard</id>
+  <name>AirCard</name>
+  <summary>Apple Wallet card and passcode theme utility</summary>
+  <developer_name>AirCard Contributors</developer_name>
+  <url type="homepage">https://github.com/Mak5er/AirCard</url>
+  <description><p>Prepare and apply Apple Wallet card artwork and passcode themes from Linux.</p></description>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <launchable type="desktop-id">io.github.aircard.AirCard.desktop</launchable>
+  <content_rating type="oars-1.1"/>
+</component>

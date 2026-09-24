@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=AirCard
+Comment=Apple Wallet card and passcode theme utility
+Exec=aircard
+Icon=io.github.aircard.AirCard
+Terminal=false
+Type=Application
+Categories=Utility;GTK;
+StartupNotify=true

@@ -75,9 +75,9 @@ button.aircard-primary:active {
   background-color: #d97556;
 }
 
-.aircard-empty {
-  min-height: 200px;
-  padding: 20px 16px;
+.aircard-sidebar-title {
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .aircard-log-list {

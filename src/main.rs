@@ -15,11 +15,12 @@ use std::{
 };
 
 const APP_ID: &str = "io.github.aircard.AirCard";
-const PAGE_TITLES: [&str; 4] = [
+const PAGE_TITLES: [&str; 5] = [
     "device.title",
     "wallet.title",
     "theme.title",
     "activity.title",
+    "settings.tooltip",
 ];
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
@@ -47,7 +48,6 @@ struct UiTexts {
     content_page: adw::NavigationPage,
     selected_page: Rc<Cell<usize>>,
     hash_entry: gtk::Entry,
-    settings_button: gtk::MenuButton,
     device_label: gtk::Label,
     status_label: gtk::Label,
     status_dot: gtk::DrawingArea,
@@ -71,10 +71,6 @@ impl UiTexts {
         self.content_page.set_title(title);
         self.hash_entry
             .set_placeholder_text(Some(i18n::tr(language, "wallet.hash_placeholder")));
-        self.settings_button
-            .set_label(i18n::tr(language, "settings.tooltip"));
-        self.settings_button
-            .set_tooltip_text(Some(i18n::tr(language, "settings.tooltip")));
         self.dot_state.set(state.connection_status);
         self.status_dot.queue_draw();
         if state.device.is_none() {
@@ -92,7 +88,7 @@ impl UiTexts {
         }
         if core::tools_status() == "libimobiledevice is available" {
             self.tools_label
-                .set_text(i18n::tr(language, "device.info_available"));
+                .set_text(i18n::tr(language, "settings.dependency_available"));
         }
     }
 }
@@ -178,7 +174,7 @@ fn build_ui(app: &adw::Application) {
     let sidebar_header = adw::HeaderBar::new();
     sidebar_header.add_css_class("aircard-sidebar-header");
     let sidebar_title = gtk::Label::new(Some("AirCard"));
-    sidebar_title.add_css_class("title-4");
+    sidebar_title.add_css_class("aircard-sidebar-title");
     sidebar_title.set_margin_start(8);
     sidebar_header.pack_start(&sidebar_title);
     sidebar_header.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
@@ -191,10 +187,26 @@ fn build_ui(app: &adw::Application) {
     nav.set_activate_on_single_click(true);
     let mut nav_labels = Vec::new();
     for (icon, key) in [
-        ("computer-symbolic", "device.tab"),
-        ("image-x-generic-symbolic", "wallet.tab"),
-        ("input-keyboard-symbolic", "theme.tab"),
-        ("view-list-symbolic", "activity.tab"),
+        (
+            include_bytes!("../resources/icons/device.svg").as_slice(),
+            "device.tab",
+        ),
+        (
+            include_bytes!("../resources/icons/wallet.svg").as_slice(),
+            "wallet.tab",
+        ),
+        (
+            include_bytes!("../resources/icons/theme.svg").as_slice(),
+            "theme.tab",
+        ),
+        (
+            include_bytes!("../resources/icons/activity.svg").as_slice(),
+            "activity.tab",
+        ),
+        (
+            include_bytes!("../resources/icons/settings.svg").as_slice(),
+            "settings.tooltip",
+        ),
     ] {
         let (row, label) = sidebar_row(icon);
         nav.append(&row);
@@ -253,13 +265,8 @@ fn build_ui(app: &adw::Application) {
     page_title.set_xalign(0.0);
     content_header.pack_start(&page_title);
     content_header.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
-    let settings_button = gtk::MenuButton::new();
-    let settings_popover = gtk::Popover::new();
-    let settings_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    settings_box.set_margin_top(12);
-    settings_box.set_margin_bottom(12);
-    settings_box.set_margin_start(16);
-    settings_box.set_margin_end(16);
+    let settings_body = page_body();
+    let settings_box = card_box();
     let language_heading = gtk::Label::new(None);
     language_heading.set_xalign(0.0);
     settings_box.append(&language_heading);
@@ -268,21 +275,37 @@ fn build_ui(app: &adw::Application) {
     korean_choice.set_group(Some(&english_choice));
     let japanese_choice = gtk::CheckButton::with_label("日本語");
     japanese_choice.set_group(Some(&english_choice));
-    for choice in [&english_choice, &korean_choice, &japanese_choice] {
-        settings_box.append(choice);
+    let language_choices = gtk::Box::new(gtk::Orientation::Horizontal, 24);
+    for choice in [&korean_choice, &english_choice, &japanese_choice] {
+        language_choices.append(choice);
     }
+    settings_box.append(&language_choices);
+    settings_body.append(&settings_box);
+    let dependencies_card = card_box();
+    let dependencies_heading = gtk::Label::new(None);
+    dependencies_heading.set_xalign(0.0);
+    dependencies_card.append(&dependencies_heading);
+    let dependency_name = gtk::Label::new(Some("libimobiledevice"));
+    dependency_name.set_xalign(0.0);
+    let status = core::tools_status();
+    let tools_label = gtk::Label::new(Some(&status));
+    tools_label.set_xalign(1.0);
+    tools_label.set_hexpand(true);
+    tools_label.set_wrap(true);
+    tools_label.add_css_class("aircard-muted");
+    let dependency_row = card_row(&dependency_name, &tools_label);
+    dependencies_card.append(&dependency_row);
+    settings_body.append(&dependencies_card);
     match language.get() {
         i18n::Language::English => english_choice.set_active(true),
         i18n::Language::Korean => korean_choice.set_active(true),
         i18n::Language::Japanese => japanese_choice.set_active(true),
     }
-    settings_popover.set_child(Some(&settings_box));
-    settings_button.set_popover(Some(&settings_popover));
-    content_header.pack_end(&settings_button);
     content_toolbar.add_top_bar(&content_header);
     let stack = gtk::Stack::new();
     stack.set_transition_type(gtk::StackTransitionType::Crossfade);
     stack.set_transition_duration(150);
+    stack.add_named(&page_scroller(&settings_body), Some("settings"));
     content_toolbar.set_content(Some(&stack));
     let content_page = adw::NavigationPage::new(&content_toolbar, "Device");
     split.set_content(Some(&content_page));
@@ -300,12 +323,6 @@ fn build_ui(app: &adw::Application) {
     let refresh = gtk::Button::new();
     let device_row = card_row(&device_label, &refresh);
     device_card.append(&device_row);
-    device_card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    let status = core::tools_status();
-    let tools_label = gtk::Label::new(Some(&status));
-    tools_label.set_xalign(0.0);
-    tools_label.add_css_class("aircard-muted");
-    device_card.append(&tools_label);
     device_body.append(&device_card);
     stack.add_named(&page_scroller(&device_body), Some("device"));
 
@@ -368,26 +385,22 @@ fn build_ui(app: &adw::Application) {
 
     let activity_body = page_body();
     activity_body.set_vexpand(true);
-    let activity_card = card_box();
-    activity_card.set_vexpand(true);
     let activity_stack = gtk::Stack::new();
     activity_stack.set_vexpand(true);
-    let empty_activity = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    empty_activity.add_css_class("aircard-empty");
-    empty_activity.set_halign(gtk::Align::Center);
-    empty_activity.set_valign(gtk::Align::Center);
     let empty_title = gtk::Label::new(None);
-    empty_title.add_css_class("title-4");
-    empty_activity.append(&empty_title);
-    activity_stack.add_named(&empty_activity, Some("empty"));
+    empty_title.add_css_class("aircard-muted");
+    empty_title.set_wrap(true);
+    empty_title.set_justify(gtk::Justification::Center);
+    empty_title.set_halign(gtk::Align::Center);
+    empty_title.set_valign(gtk::Align::Center);
+    activity_stack.add_named(&empty_title, Some("empty"));
     let log_list = gtk::ListBox::new();
     log_list.add_css_class("aircard-log-list");
     log_list.set_selection_mode(gtk::SelectionMode::None);
     log_list.set_show_separators(true);
     activity_stack.add_named(&log_list, Some("log"));
     activity_stack.set_visible_child_name("empty");
-    activity_card.append(&activity_stack);
-    activity_body.append(&activity_card);
+    activity_body.append(&activity_stack);
     stack.add_named(&page_scroller(&activity_body), Some("activity"));
 
     let window = adw::ApplicationWindow::builder()
@@ -417,6 +430,7 @@ fn build_ui(app: &adw::Application) {
             .into_iter()
             .chain([
                 (language_heading, "settings.language"),
+                (dependencies_heading, "settings.dependencies"),
                 (device_heading, "device.title"),
                 (card_step, "wallet.step_card"),
                 (image_step, "wallet.step_image"),
@@ -438,7 +452,6 @@ fn build_ui(app: &adw::Application) {
         content_page: content_page.clone(),
         selected_page: selected_page.clone(),
         hash_entry: hash.clone(),
-        settings_button,
         device_label: device_label.clone(),
         status_label: status_label.clone(),
         status_dot: status_dot.clone(),
@@ -457,7 +470,7 @@ fn build_ui(app: &adw::Application) {
         nav.connect_row_selected(move |_, row| {
             let Some(row) = row else { return };
             let index = row.index() as usize;
-            let name = ["device", "wallet", "theme", "activity"][index];
+            let name = ["device", "wallet", "theme", "activity", "settings"][index];
             texts.selected_page.set(index);
             texts.update(language.get(), &state.borrow());
             stack.set_visible_child_name(name);
@@ -478,7 +491,6 @@ fn build_ui(app: &adw::Application) {
         let texts = texts.clone();
         let state = state.clone();
         let overlay = overlay.clone();
-        let popover = settings_popover.clone();
         choice.connect_toggled(move |choice| {
             if !choice.is_active() {
                 return;
@@ -495,7 +507,6 @@ fn build_ui(app: &adw::Application) {
                     ),
                 );
             }
-            popover.popdown();
         });
     }
     {
@@ -772,11 +783,12 @@ fn install_styles() {
     );
 }
 
-fn sidebar_row(icon_name: &str) -> (gtk::ListBoxRow, gtk::Label) {
+fn sidebar_row(svg: &'static [u8]) -> (gtk::ListBoxRow, gtk::Label) {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("aircard-nav-row");
     let body = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let icon = gtk::Image::from_icon_name(icon_name);
+    let bytes = glib::Bytes::from_static(svg);
+    let icon = gtk::Image::from_gicon(&gio::BytesIcon::new(&bytes));
     icon.set_pixel_size(18);
     let label = gtk::Label::new(None);
     label.set_hexpand(true);

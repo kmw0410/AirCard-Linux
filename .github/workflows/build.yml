@@ -6,6 +6,11 @@ on:
       - "**"
     tags:
       - "v*.*.*"
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - "**/LICENSE"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 env:
@@ -16,7 +21,52 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_build: ${{ steps.filter.outputs.should_build }}
+    steps:
+      - name: Checkout history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check changed files in each commit
+        id: filter
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "branch" && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            mapfile -t commits < <(git rev-list "$BEFORE..$GITHUB_SHA")
+          else
+            commits=("$GITHUB_SHA")
+          fi
+
+          should_build=true
+          for commit in "${commits[@]}"; do
+            if git rev-parse "$commit^" >/dev/null 2>&1; then
+              files=(git diff --name-only -z "$commit^" "$commit")
+            else
+              files=(git diff-tree --root --no-commit-id --name-only -r -z "$commit")
+            fi
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                *.md|LICENSE|*/LICENSE|.github/workflows/*)
+                  echo "Skipping build: $commit changes $path"
+                  should_build=false
+                  break
+                  ;;
+              esac
+            done < <("${files[@]}")
+            if [[ "$should_build" == false ]]; then
+              break
+            fi
+          done
+          echo "should_build=$should_build" >> "$GITHUB_OUTPUT"
+
   build:
+    name: Build AppImage
+    needs: changes
+    if: needs.changes.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout

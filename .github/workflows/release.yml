@@ -72,10 +72,19 @@ jobs:
             echo "No valid successful AppImage Build run found for $tag" >&2
             exit 1
           fi
-          run_info="$(gh run view "$run_id" --json headSha,conclusion,workflowName --jq '[.headSha,.conclusion,.workflowName] | @tsv')"
-          IFS=$'\t' read -r build_sha build_result build_name <<< "$run_info"
+          run_info="$(gh run view "$run_id" --json headSha,conclusion,workflowName,jobs --jq '[.headSha,.conclusion,.workflowName, ([.jobs[] | select(.name == "Build AppImage") | .conclusion][0] // "")] | @tsv')"
+          IFS=$'\t' read -r build_sha build_result build_name build_job_result <<< "$run_info"
           if [[ "$build_sha" != "$commit" || "$build_result" != "success" || "$build_name" != "AppImage Build" ]]; then
             echo "Build run $run_id does not match successful AppImage Build for $tag" >&2
+            exit 1
+          fi
+          if [[ "$build_job_result" != "success" ]]; then
+            if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
+              echo "The AppImage build job was skipped; nothing to release."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Build run $run_id has no successful AppImage build job" >&2
             exit 1
           fi
 

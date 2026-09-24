@@ -1,5 +1,7 @@
 # AirCard (Linux) 🎴
 
+[Korean](README.ko.md) | [English](README.md) | [Japanese](README.ja.md)
+
 > **Apple Wallet Card Skinner & Lockscreen Passcode Themer for Linux (No Jailbreak Required)**
 > Only the Wallet card image-changing feature has been tested on an iPhone running iOS 27.2. Passcode themes have not yet been verified on a device. Other iOS versions are also untested.
 > Powered by the `airlift` AirTraffic sync exploit.
@@ -14,7 +16,7 @@ AirCard (Linux) is a GTK4/libadwaita port of [AirCard](https://github.com/Mak5er
 - 🔢 **Lock Screen Passcode Themes (.passthm):** Apply keypad artwork from an existing `.passthm` file. This Linux path is implemented but has not yet been verified; only Wallet image changing has been tested.
 - 📱 **Card Detection:** Open a card in Wallet while scanning device logs to fill its card hash automatically.
 - 🐧 **GTK AppImage:** GTK4/libadwaita interface for x86_64 Linux. The AppImage bundles the application and its `libimobiledevice` utilities; the host must provide `usbmuxd`.
-- 🌐 **다중언어 지원**
+- 🌐 **Multilingual Support**
 - 💾 **Books Sync Backup:** Save the affected Books sync files before each apply operation and restore them afterward.
 
 ---

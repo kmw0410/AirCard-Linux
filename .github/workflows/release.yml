@@ -133,7 +133,10 @@ jobs:
           fi
           {
             printf '# Changelog\n\n'
-            git log --format='- `%H` %s' "$range"
+            while IFS=$'\t' read -r commit subject; do
+              printf -- '- [`%s`](%s/%s/commit/%s) %s\n' \
+                "${commit:0:7}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$commit" "$subject"
+            done < <(git log --format='%H%x09%s' "$range")
           } > "$RUNNER_TEMP/release-notes.md"
           if [[ $(wc -l < "$RUNNER_TEMP/release-notes.md") -lt 3 ]]; then
             echo "No commits found for changelog" >&2

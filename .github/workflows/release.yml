@@ -25,8 +25,12 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
+    concurrency:
+      group: aircard-release
+      cancel-in-progress: false
     permissions:
       actions: read
       contents: write
@@ -60,12 +64,6 @@ jobs:
           else
             commit="$SOURCE_SHA"
             run_id="$SOURCE_RUN_ID"
-            tag="$(git tag --points-at "$commit" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
-            if [[ -z "$tag" ]]; then
-              echo "No vX.Y.Z tag on build commit; nothing to release."
-              echo "release=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
           fi
 
           if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
@@ -86,6 +84,23 @@ jobs:
             fi
             echo "Build run $run_id has no successful AppImage build job" >&2
             exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
+            tag="$(git tag --points-at "$commit" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+            if [[ -z "$tag" ]]; then
+              base_version="$(git show "$commit:Cargo.toml" | sed -nE 's/^version[[:space:]]*=[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p')"
+              if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "Could not read a vX.Y.Z base version from Cargo.toml" >&2
+                exit 1
+              fi
+              tag="v$base_version"
+              latest="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+              if [[ -n "$latest" && "$(printf '%s\n' "$tag" "$latest" | sort -V | tail -n 1)" == "$latest" ]]; then
+                IFS='.' read -r major minor patch <<< "${latest#v}"
+                tag="v${major}.${minor}.$((patch + 1))"
+              fi
+            fi
           fi
 
           echo "release=true" >> "$GITHUB_OUTPUT"
@@ -129,11 +144,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/AirCard-x86_64.AppImage --clobber
             gh release edit "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
           else
             gh release create "$TAG" dist/AirCard-x86_64.AppImage \
-              --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
+              --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --target "$RELEASE_COMMIT"
           fi

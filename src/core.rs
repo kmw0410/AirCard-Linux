@@ -4,6 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::LazyLock,
 };
 
 #[derive(Clone, Debug)]
@@ -104,10 +105,16 @@ pub fn theme_summary(path: &Path) -> Result<usize> {
     Ok(count)
 }
 
-#[allow(dead_code)] // Used by the upcoming continuous syslog worker; unit-tested below.
 pub fn extract_card_hashes(log: &str) -> Vec<String> {
-    let re = Regex::new(r"(?:Cards|Passes/Cards)/([A-Za-z0-9+/_-]{27,43}={0,2})").unwrap();
-    re.captures_iter(log)
+    static PATH: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?:Cards|Passes/Cards)/([A-Za-z0-9+/_-]{27,43}={0,2})(?:\.pkpass|/|\s|$)")
+            .unwrap()
+    });
+    static DASHBOARD: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"Passbook\(PassKitUI\).*Dashboard loading \([^)]*\): ([A-Za-z0-9+/_-]{27,43}={0,2})(?:\s|$)").unwrap()
+    });
+    PATH.captures_iter(log)
+        .chain(DASHBOARD.captures_iter(log))
         .filter_map(|c| c.get(1).map(|m| m.as_str().to_owned()))
         .collect()
 }
@@ -135,6 +142,15 @@ mod tests {
     fn detects_wallet_card_hash_from_log_path() {
         let hash = "M6nDwZrkYbFlsodLgCbvyFZQ1cc=";
         let log = format!("passd loaded /var/mobile/Library/Passes/Cards/{hash}.pkpass");
+        assert_eq!(extract_card_hashes(&log), vec![hash]);
+    }
+
+    #[test]
+    fn detects_wallet_card_hash_from_dashboard_loading() {
+        let hash = "BHHUbzHV5Lf5GxSe4ceD43tiwl8=";
+        let log = format!(
+            "Sep 25 06:59:03 Passbook(PassKitUI)[25069] <Notice>: Dashboard loading (0x7545961900): {hash} - m:NO, sm:YES"
+        );
         assert_eq!(extract_card_hashes(&log), vec![hash]);
     }
 }

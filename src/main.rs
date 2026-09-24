@@ -673,6 +673,7 @@ fn build_ui(app: &adw::Application) {
             append_log(&log, i18n::tr(language.get(), "activity.scanning"));
             let (tx, rx) = mpsc::channel::<Option<String>>();
             thread::spawn(move || {
+                let mut seen = std::collections::HashSet::new();
                 let child = std::process::Command::new("timeout")
                     .args(["60s", "idevicesyslog", "--no-colors", "-u", &device.udid])
                     .stdout(std::process::Stdio::piped())
@@ -681,7 +682,9 @@ fn build_ui(app: &adw::Application) {
                     if let Some(stdout) = child.stdout.take() {
                         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                             for found in core::extract_card_hashes(&line) {
-                                let _ = tx.send(Some(found));
+                                if seen.insert(found.clone()) {
+                                    let _ = tx.send(Some(found));
+                                }
                             }
                         }
                     }

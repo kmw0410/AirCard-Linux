@@ -40,6 +40,8 @@
   "wallet.need_device_image": "Select an iPhone and image first.",
   "wallet.need_hash": "Enter or scan a card hash first.",
   "wallet.success": "Artwork sent; {count} cache entries removed. Force-close and reopen Wallet to inspect the result.",
+  "wallet.step_card": "1  Find your card",
+  "wallet.step_image": "2  Choose an image",
   "wallet.tab": "Wallet Cards",
   "wallet.title": "Wallet cards"
 }

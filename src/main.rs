@@ -28,7 +28,7 @@ struct State {
 struct UiTexts {
     labels: Vec<(gtk::Label, &'static str)>,
     buttons: Vec<(gtk::Button, &'static str)>,
-    pages: Vec<(adw::ViewStackPage, &'static str)>,
+    expanders: Vec<(gtk::Expander, &'static str)>,
     hash_entry: gtk::Entry,
     settings_button: gtk::MenuButton,
     device_label: gtk::Label,
@@ -45,8 +45,8 @@ impl UiTexts {
         for (button, key) in &self.buttons {
             button.set_label(i18n::tr(language, key));
         }
-        for (page, key) in &self.pages {
-            page.set_title(Some(i18n::tr(language, key)));
+        for (expander, key) in &self.expanders {
+            expander.set_label(Some(i18n::tr(language, key)));
         }
         self.hash_entry
             .set_placeholder_text(Some(i18n::tr(language, "wallet.hash_placeholder")));
@@ -140,13 +140,10 @@ fn build_ui(app: &adw::Application) {
     let state = Rc::new(RefCell::new(State::default()));
     let language = Rc::new(Cell::new(i18n::load_language()));
     let overlay = adw::ToastOverlay::new();
-    let stack = adw::ViewStack::builder().build();
-    let switcher = adw::ViewSwitcher::builder()
-        .stack(&stack)
-        .policy(adw::ViewSwitcherPolicy::Wide)
-        .build();
     let toolbar = adw::ToolbarView::new();
-    let header = adw::HeaderBar::builder().title_widget(&switcher).build();
+    let title = gtk::Label::new(Some("AirCard"));
+    title.add_css_class("title-3");
+    let header = adw::HeaderBar::builder().title_widget(&title).build();
     let settings_button = gtk::MenuButton::new();
     let settings_popover = gtk::Popover::new();
     let settings_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -174,61 +171,114 @@ fn build_ui(app: &adw::Application) {
     settings_button.set_popover(Some(&settings_popover));
     header.pack_end(&settings_button);
     toolbar.add_top_bar(&header);
-    toolbar.set_content(Some(&stack));
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 24);
+    content.set_margin_top(28);
+    content.set_margin_bottom(28);
+    content.set_margin_start(36);
+    content.set_margin_end(36);
+    scroll.set_child(Some(&content));
+    toolbar.set_content(Some(&scroll));
     overlay.set_child(Some(&toolbar));
 
+    let device_heading = section_heading("title-2");
     let device_label = gtk::Label::new(None);
     device_label.set_xalign(0.0);
+    device_label.set_hexpand(true);
+    device_label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     let refresh = gtk::Button::new();
     let status = core::tools_status();
     let tools_label = gtk::Label::new(Some(&status));
-    let (device_page, device_heading) = group_page(vec![
-        device_label.clone().upcast(),
-        refresh.clone().upcast(),
-        tools_label.clone().upcast(),
-    ]);
-    let device_stack_page = stack.add_titled(&device_page, Some("device"), "Device");
+    tools_label.set_xalign(0.0);
+    tools_label.add_css_class("dim-label");
+    let device_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    device_row.append(&device_heading);
+    device_row.append(&device_label);
+    device_row.append(&refresh);
+    let device_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    device_section.append(&device_row);
+    device_section.append(&tools_label);
+    content.append(&device_section);
 
+    let wallet_heading = section_heading("title-2");
+    content.append(&wallet_heading);
+    let wallet_frame = gtk::Frame::new(None);
+    let wallet_body = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    wallet_body.set_margin_top(18);
+    wallet_body.set_margin_bottom(18);
+    wallet_body.set_margin_start(18);
+    wallet_body.set_margin_end(18);
+    let card_step = section_heading("title-4");
+    wallet_body.append(&card_step);
     let hash = gtk::Entry::new();
+    hash.set_hexpand(true);
+    let scan = gtk::Button::new();
+    let hash_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    hash_row.append(&scan);
+    hash_row.append(&hash);
+    wallet_body.append(&hash_row);
+    let image_step = section_heading("title-4");
+    image_step.set_margin_top(8);
+    wallet_body.append(&image_step);
     let image_label = gtk::Label::new(None);
     image_label.set_xalign(0.0);
+    image_label.set_hexpand(true);
+    image_label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     let choose_image = gtk::Button::new();
+    let image_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    image_row.append(&choose_image);
+    image_row.append(&image_label);
+    wallet_body.append(&image_row);
     let apply_skin = gtk::Button::new();
     apply_skin.add_css_class("suggested-action");
+    apply_skin.set_halign(gtk::Align::End);
+    wallet_body.append(&apply_skin);
     let wallet_info = gtk::Label::new(None);
-    let (wallet_page, wallet_heading) = group_page(vec![
-        hash.clone().upcast(),
-        image_label.clone().upcast(),
-        choose_image.clone().upcast(),
-        apply_skin.clone().upcast(),
-        wallet_info.clone().upcast(),
-    ]);
-    let wallet_stack_page = stack.add_titled(&wallet_page, Some("wallet"), "Wallet Cards");
+    wallet_info.set_xalign(0.0);
+    wallet_info.set_wrap(true);
+    wallet_info.add_css_class("dim-label");
+    wallet_body.append(&wallet_info);
+    wallet_frame.set_child(Some(&wallet_body));
+    content.append(&wallet_frame);
 
+    let theme_expander = gtk::Expander::new(None);
     let theme_label = gtk::Label::new(None);
     theme_label.set_xalign(0.0);
+    theme_label.set_wrap(true);
     let choose_theme = gtk::Button::new();
     let apply_theme = gtk::Button::new();
     apply_theme.add_css_class("suggested-action");
     let theme_info = gtk::Label::new(None);
-    let (theme_page, theme_heading) = group_page(vec![
-        theme_label.clone().upcast(),
-        choose_theme.clone().upcast(),
-        apply_theme.clone().upcast(),
-        theme_info.clone().upcast(),
-    ]);
-    let theme_stack_page = stack.add_titled(&theme_page, Some("theme"), "Passcode Themes");
+    theme_info.set_xalign(0.0);
+    theme_info.set_wrap(true);
+    theme_info.add_css_class("dim-label");
+    let theme_body = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    theme_body.set_margin_top(12);
+    theme_body.set_margin_start(18);
+    theme_body.append(&theme_label);
+    theme_body.append(&choose_theme);
+    theme_body.append(&apply_theme);
+    theme_body.append(&theme_info);
+    theme_expander.set_child(Some(&theme_body));
+    content.append(&theme_expander);
 
+    let activity_expander = gtk::Expander::new(None);
     let log_view = gtk::TextView::new();
     log_view.set_editable(false);
     log_view.set_monospace(true);
     log_view
         .buffer()
         .set_text(&format!("{}\n", i18n::tr(language.get(), "activity.ready")));
-    let scan = gtk::Button::new();
-    let (log_page, activity_heading) =
-        group_page(vec![scan.clone().upcast(), log_view.clone().upcast()]);
-    let activity_stack_page = stack.add_titled(&log_page, Some("activity"), "Activity");
+    let log_scroll = gtk::ScrolledWindow::new();
+    log_scroll.set_size_request(-1, 180);
+    log_scroll.set_child(Some(&log_view));
+    let activity_body = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    activity_body.set_margin_top(12);
+    activity_body.set_margin_start(18);
+    activity_body.append(&log_scroll);
+    activity_expander.set_child(Some(&activity_body));
+    content.append(&activity_expander);
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -242,10 +292,10 @@ fn build_ui(app: &adw::Application) {
             (language_heading, "settings.language"),
             (device_heading, "device.title"),
             (wallet_heading, "wallet.title"),
+            (card_step, "wallet.step_card"),
+            (image_step, "wallet.step_image"),
             (wallet_info, "wallet.info"),
-            (theme_heading, "theme.title"),
             (theme_info, "theme.info"),
-            (activity_heading, "activity.title"),
         ],
         buttons: vec![
             (refresh.clone(), "device.refresh"),
@@ -255,11 +305,9 @@ fn build_ui(app: &adw::Application) {
             (apply_theme.clone(), "theme.apply"),
             (scan.clone(), "activity.scan"),
         ],
-        pages: vec![
-            (device_stack_page, "device.tab"),
-            (wallet_stack_page, "wallet.tab"),
-            (theme_stack_page, "theme.tab"),
-            (activity_stack_page, "activity.tab"),
+        expanders: vec![
+            (theme_expander.clone(), "theme.title"),
+            (activity_expander.clone(), "activity.title"),
         ],
         hash_entry: hash.clone(),
         settings_button,
@@ -341,6 +389,7 @@ fn build_ui(app: &adw::Application) {
         let button = apply_skin.clone();
         let log = log_view.buffer();
         let language = language.clone();
+        let activity_expander = activity_expander.clone();
         apply_skin.connect_clicked(move |_| {
             let mut s = state.borrow_mut();
             s.card_hash = hash.text().to_string();
@@ -361,6 +410,7 @@ fn build_ui(app: &adw::Application) {
                 toast(&overlay, i18n::tr(language.get(), "wallet.need_hash"));
                 return;
             }
+            activity_expander.set_expanded(true);
             run_task(
                 &button,
                 &overlay,
@@ -382,6 +432,7 @@ fn build_ui(app: &adw::Application) {
         let button = apply_theme.clone();
         let log = log_view.buffer();
         let language = language.clone();
+        let activity_expander = activity_expander.clone();
         apply_theme.connect_clicked(move |_| {
             let s = state.borrow();
             let args = s
@@ -394,6 +445,7 @@ fn build_ui(app: &adw::Application) {
                 toast(&overlay, i18n::tr(language.get(), "theme.need_device_file"));
                 return;
             };
+            activity_expander.set_expanded(true);
             run_task(
                 &button,
                 &overlay,
@@ -411,11 +463,13 @@ fn build_ui(app: &adw::Application) {
         let scan_button = scan.clone();
         let hash_entry = hash.clone();
         let language = language.clone();
+        let activity_expander = activity_expander.clone();
         scan.connect_clicked(move |_| {
             let Some(device) = state.borrow().device.clone() else {
                 toast(&overlay, i18n::tr(language.get(), "activity.need_device"));
                 return;
             };
+            activity_expander.set_expanded(true);
             scan_button.set_sensitive(false);
             buffer.insert_at_cursor(&format!(
                 "{}\n",
@@ -526,20 +580,11 @@ fn localize_success(language: i18n::Language, message: &str) -> String {
     message.to_owned()
 }
 
-fn group_page(children: Vec<gtk::Widget>) -> (gtk::Box, gtk::Label) {
-    let page = gtk::Box::new(gtk::Orientation::Vertical, 14);
-    page.set_margin_top(30);
-    page.set_margin_bottom(30);
-    page.set_margin_start(42);
-    page.set_margin_end(42);
+fn section_heading(css_class: &str) -> gtk::Label {
     let heading = gtk::Label::new(None);
-    heading.add_css_class("title-1");
+    heading.add_css_class(css_class);
     heading.set_xalign(0.0);
-    page.append(&heading);
-    for child in children {
-        page.append(&child);
-    }
-    (page, heading)
+    heading
 }
 
 fn choose_file(

@@ -40,6 +40,8 @@
   "wallet.need_device_image": "先にiPhoneと画像を選択してください。",
   "wallet.need_hash": "カードのハッシュを入力するかスキャンしてください。",
   "wallet.success": "画像を転送しました。キャッシュ項目を{count}件削除しました。Walletを完全に終了して開き直し、結果を確認してください。",
+  "wallet.step_card": "1  カードを探す",
+  "wallet.step_image": "2  画像を選択",
   "wallet.tab": "Walletカード",
   "wallet.title": "Walletカード"
 }

@@ -15,10 +15,25 @@ use std::{
 };
 
 const APP_ID: &str = "io.github.aircard.AirCard";
+const PAGE_TITLES: [&str; 4] = [
+    "device.title",
+    "wallet.title",
+    "theme.title",
+    "activity.title",
+];
+
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+enum ConnectionStatus {
+    #[default]
+    Waiting,
+    Connected,
+    Disconnected,
+}
 
 #[derive(Default)]
 struct State {
     device: Option<core::Device>,
+    connection_status: ConnectionStatus,
     image: Option<PathBuf>,
     theme: Option<PathBuf>,
     card_hash: String,
@@ -28,10 +43,15 @@ struct State {
 struct UiTexts {
     labels: Vec<(gtk::Label, &'static str)>,
     buttons: Vec<(gtk::Button, &'static str)>,
-    expanders: Vec<(gtk::Expander, &'static str)>,
+    page_title: gtk::Label,
+    content_page: adw::NavigationPage,
+    selected_page: Rc<Cell<usize>>,
     hash_entry: gtk::Entry,
     settings_button: gtk::MenuButton,
     device_label: gtk::Label,
+    status_label: gtk::Label,
+    status_dot: gtk::DrawingArea,
+    dot_state: Rc<Cell<ConnectionStatus>>,
     image_label: gtk::Label,
     theme_label: gtk::Label,
     tools_label: gtk::Label,
@@ -45,17 +65,22 @@ impl UiTexts {
         for (button, key) in &self.buttons {
             button.set_label(i18n::tr(language, key));
         }
-        for (expander, key) in &self.expanders {
-            expander.set_label(Some(i18n::tr(language, key)));
-        }
+        let index = self.selected_page.get();
+        let title = i18n::tr(language, PAGE_TITLES[index]);
+        self.page_title.set_text(title);
+        self.content_page.set_title(title);
         self.hash_entry
             .set_placeholder_text(Some(i18n::tr(language, "wallet.hash_placeholder")));
         self.settings_button
             .set_label(i18n::tr(language, "settings.tooltip"));
         self.settings_button
             .set_tooltip_text(Some(i18n::tr(language, "settings.tooltip")));
+        self.dot_state.set(state.connection_status);
+        self.status_dot.queue_draw();
         if state.device.is_none() {
             self.device_label
+                .set_text(i18n::tr(language, "device.none"));
+            self.status_label
                 .set_text(i18n::tr(language, "device.none"));
         }
         if state.image.is_none() {
@@ -139,11 +164,95 @@ fn main() -> glib::ExitCode {
 fn build_ui(app: &adw::Application) {
     let state = Rc::new(RefCell::new(State::default()));
     let language = Rc::new(Cell::new(i18n::load_language()));
+    adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+    install_styles();
     let overlay = adw::ToastOverlay::new();
-    let toolbar = adw::ToolbarView::new();
-    let title = gtk::Label::new(Some("AirCard"));
-    title.add_css_class("title-3");
-    let header = adw::HeaderBar::builder().title_widget(&title).build();
+    let split = adw::NavigationSplitView::new();
+    split.set_sidebar_width_unit(adw::LengthUnit::Px);
+    split.set_min_sidebar_width(184.0);
+    split.set_max_sidebar_width(184.0);
+    split.set_sidebar_width_fraction(0.2);
+
+    let sidebar_toolbar = adw::ToolbarView::new();
+    sidebar_toolbar.add_css_class("aircard-sidebar");
+    let sidebar_header = adw::HeaderBar::new();
+    sidebar_header.add_css_class("aircard-sidebar-header");
+    let sidebar_title = gtk::Label::new(Some("AirCard"));
+    sidebar_title.add_css_class("title-4");
+    sidebar_title.set_margin_start(8);
+    sidebar_header.pack_start(&sidebar_title);
+    sidebar_header.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
+    sidebar_toolbar.add_top_bar(&sidebar_header);
+    let sidebar_body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    sidebar_body.add_css_class("aircard-sidebar");
+    let nav = gtk::ListBox::new();
+    nav.add_css_class("aircard-nav");
+    nav.set_selection_mode(gtk::SelectionMode::Single);
+    nav.set_activate_on_single_click(true);
+    let mut nav_labels = Vec::new();
+    for (icon, key) in [
+        ("computer-symbolic", "device.tab"),
+        ("image-x-generic-symbolic", "wallet.tab"),
+        ("input-keyboard-symbolic", "theme.tab"),
+        ("view-list-symbolic", "activity.tab"),
+    ] {
+        let (row, label) = sidebar_row(icon);
+        nav.append(&row);
+        nav_labels.push((label, key));
+    }
+    let nav_scroll = gtk::ScrolledWindow::new();
+    nav_scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    nav_scroll.set_vexpand(true);
+    nav_scroll.set_child(Some(&nav));
+    sidebar_body.append(&nav_scroll);
+    sidebar_body.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    let status_badge = gtk::Box::new(gtk::Orientation::Horizontal, 9);
+    status_badge.add_css_class("aircard-status");
+    let status_dot = gtk::DrawingArea::new();
+    let dot_state = Rc::new(Cell::new(ConnectionStatus::Waiting));
+    status_dot.set_size_request(8, 8);
+    status_dot.set_content_width(8);
+    status_dot.set_content_height(8);
+    status_dot.set_valign(gtk::Align::Center);
+    {
+        let dot_state = dot_state.clone();
+        status_dot.set_draw_func(move |_, cr, width, height| {
+            let (red, green, blue) = match dot_state.get() {
+                ConnectionStatus::Waiting => (0.56, 0.58, 0.60),
+                ConnectionStatus::Connected => (0.38, 0.76, 0.51),
+                ConnectionStatus::Disconnected => (0.88, 0.44, 0.44),
+            };
+            cr.set_source_rgb(red, green, blue);
+            cr.arc(
+                f64::from(width) / 2.0,
+                f64::from(height) / 2.0,
+                3.5,
+                0.0,
+                std::f64::consts::TAU,
+            );
+            let _ = cr.fill();
+        });
+    }
+    let status_label = gtk::Label::new(None);
+    status_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    status_label.set_xalign(0.0);
+    status_badge.append(&status_dot);
+    status_badge.append(&status_label);
+    sidebar_body.append(&status_badge);
+    sidebar_toolbar.set_content(Some(&sidebar_body));
+    let sidebar_page = adw::NavigationPage::new(&sidebar_toolbar, "AirCard");
+    split.set_sidebar(Some(&sidebar_page));
+
+    let content_toolbar = adw::ToolbarView::new();
+    content_toolbar.add_css_class("aircard-content");
+    let content_header = adw::HeaderBar::new();
+    content_header.add_css_class("aircard-content-header");
+    let page_title = gtk::Label::new(None);
+    page_title.add_css_class("title-4");
+    page_title.set_margin_start(12);
+    page_title.set_xalign(0.0);
+    content_header.pack_start(&page_title);
+    content_header.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
     let settings_button = gtk::MenuButton::new();
     let settings_popover = gtk::Popover::new();
     let settings_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -169,134 +278,154 @@ fn build_ui(app: &adw::Application) {
     }
     settings_popover.set_child(Some(&settings_box));
     settings_button.set_popover(Some(&settings_popover));
-    header.pack_end(&settings_button);
-    toolbar.add_top_bar(&header);
-    let scroll = gtk::ScrolledWindow::new();
-    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 24);
-    content.set_margin_top(28);
-    content.set_margin_bottom(28);
-    content.set_margin_start(36);
-    content.set_margin_end(36);
-    scroll.set_child(Some(&content));
-    toolbar.set_content(Some(&scroll));
-    overlay.set_child(Some(&toolbar));
+    content_header.pack_end(&settings_button);
+    content_toolbar.add_top_bar(&content_header);
+    let stack = gtk::Stack::new();
+    stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+    stack.set_transition_duration(150);
+    content_toolbar.set_content(Some(&stack));
+    let content_page = adw::NavigationPage::new(&content_toolbar, "Device");
+    split.set_content(Some(&content_page));
+    split.set_show_content(true);
+    overlay.set_child(Some(&split));
 
-    let device_heading = section_heading("title-2");
+    let device_body = page_body();
+    let device_card = card_box();
+    let device_heading = section_heading();
+    device_card.append(&device_heading);
     let device_label = gtk::Label::new(None);
     device_label.set_xalign(0.0);
     device_label.set_hexpand(true);
     device_label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     let refresh = gtk::Button::new();
+    let device_row = card_row(&device_label, &refresh);
+    device_card.append(&device_row);
+    device_card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     let status = core::tools_status();
     let tools_label = gtk::Label::new(Some(&status));
     tools_label.set_xalign(0.0);
-    tools_label.add_css_class("dim-label");
-    let device_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    device_row.append(&device_heading);
-    device_row.append(&device_label);
-    device_row.append(&refresh);
-    let device_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    device_section.append(&device_row);
-    device_section.append(&tools_label);
-    content.append(&device_section);
+    tools_label.add_css_class("aircard-muted");
+    device_card.append(&tools_label);
+    device_body.append(&device_card);
+    stack.add_named(&page_scroller(&device_body), Some("device"));
 
-    let wallet_heading = section_heading("title-2");
-    content.append(&wallet_heading);
-    let wallet_frame = gtk::Frame::new(None);
-    let wallet_body = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    wallet_body.set_margin_top(18);
-    wallet_body.set_margin_bottom(18);
-    wallet_body.set_margin_start(18);
-    wallet_body.set_margin_end(18);
-    let card_step = section_heading("title-4");
-    wallet_body.append(&card_step);
+    let wallet_body = page_body();
+    let hash_card = card_box();
+    let card_step = section_heading();
+    hash_card.append(&card_step);
     let hash = gtk::Entry::new();
     hash.set_hexpand(true);
     let scan = gtk::Button::new();
-    let hash_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    hash_row.append(&scan);
-    hash_row.append(&hash);
-    wallet_body.append(&hash_row);
-    let image_step = section_heading("title-4");
-    image_step.set_margin_top(8);
-    wallet_body.append(&image_step);
+    let hash_row = card_row(&hash, &scan);
+    hash_card.append(&hash_row);
+    wallet_body.append(&hash_card);
+    let image_card = card_box();
+    let image_step = section_heading();
+    image_card.append(&image_step);
     let image_label = gtk::Label::new(None);
     image_label.set_xalign(0.0);
     image_label.set_hexpand(true);
     image_label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     let choose_image = gtk::Button::new();
-    let image_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    image_row.append(&choose_image);
-    image_row.append(&image_label);
-    wallet_body.append(&image_row);
+    let image_row = card_row(&image_label, &choose_image);
+    image_card.append(&image_row);
+    image_card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     let apply_skin = gtk::Button::new();
-    apply_skin.add_css_class("suggested-action");
+    apply_skin.add_css_class("aircard-primary");
     apply_skin.set_halign(gtk::Align::End);
-    wallet_body.append(&apply_skin);
+    image_card.append(&apply_skin);
     let wallet_info = gtk::Label::new(None);
     wallet_info.set_xalign(0.0);
     wallet_info.set_wrap(true);
-    wallet_info.add_css_class("dim-label");
-    wallet_body.append(&wallet_info);
-    wallet_frame.set_child(Some(&wallet_body));
-    content.append(&wallet_frame);
+    wallet_info.add_css_class("aircard-muted");
+    image_card.append(&wallet_info);
+    wallet_body.append(&image_card);
+    stack.add_named(&page_scroller(&wallet_body), Some("wallet"));
 
-    let theme_expander = gtk::Expander::new(None);
+    let theme_body = page_body();
+    let theme_card = card_box();
+    let theme_heading = section_heading();
+    theme_card.append(&theme_heading);
     let theme_label = gtk::Label::new(None);
     theme_label.set_xalign(0.0);
     theme_label.set_wrap(true);
+    theme_label.set_hexpand(true);
     let choose_theme = gtk::Button::new();
+    let theme_row = card_row(&theme_label, &choose_theme);
+    theme_card.append(&theme_row);
+    theme_card.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     let apply_theme = gtk::Button::new();
-    apply_theme.add_css_class("suggested-action");
+    apply_theme.add_css_class("aircard-primary");
+    apply_theme.set_halign(gtk::Align::End);
+    theme_card.append(&apply_theme);
     let theme_info = gtk::Label::new(None);
     theme_info.set_xalign(0.0);
     theme_info.set_wrap(true);
-    theme_info.add_css_class("dim-label");
-    let theme_body = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    theme_body.set_margin_top(12);
-    theme_body.set_margin_start(18);
-    theme_body.append(&theme_label);
-    theme_body.append(&choose_theme);
-    theme_body.append(&apply_theme);
-    theme_body.append(&theme_info);
-    theme_expander.set_child(Some(&theme_body));
-    content.append(&theme_expander);
+    theme_info.add_css_class("aircard-muted");
+    theme_card.append(&theme_info);
+    theme_body.append(&theme_card);
+    stack.add_named(&page_scroller(&theme_body), Some("theme"));
 
-    let activity_expander = gtk::Expander::new(None);
-    let log_view = gtk::TextView::new();
-    log_view.set_editable(false);
-    log_view.set_monospace(true);
-    log_view
-        .buffer()
-        .set_text(&format!("{}\n", i18n::tr(language.get(), "activity.ready")));
-    let log_scroll = gtk::ScrolledWindow::new();
-    log_scroll.set_size_request(-1, 180);
-    log_scroll.set_child(Some(&log_view));
-    let activity_body = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    activity_body.set_margin_top(12);
-    activity_body.set_margin_start(18);
-    activity_body.append(&log_scroll);
-    activity_expander.set_child(Some(&activity_body));
-    content.append(&activity_expander);
+    let activity_body = page_body();
+    activity_body.set_vexpand(true);
+    let activity_card = card_box();
+    activity_card.set_vexpand(true);
+    let activity_stack = gtk::Stack::new();
+    activity_stack.set_vexpand(true);
+    let empty_activity = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    empty_activity.add_css_class("aircard-empty");
+    empty_activity.set_halign(gtk::Align::Center);
+    empty_activity.set_valign(gtk::Align::Center);
+    let empty_title = gtk::Label::new(None);
+    empty_title.add_css_class("title-4");
+    empty_activity.append(&empty_title);
+    activity_stack.add_named(&empty_activity, Some("empty"));
+    let log_list = gtk::ListBox::new();
+    log_list.add_css_class("aircard-log-list");
+    log_list.set_selection_mode(gtk::SelectionMode::None);
+    log_list.set_show_separators(true);
+    activity_stack.add_named(&log_list, Some("log"));
+    activity_stack.set_visible_child_name("empty");
+    activity_card.append(&activity_stack);
+    activity_body.append(&activity_card);
+    stack.add_named(&page_scroller(&activity_body), Some("activity"));
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("AirCard")
-        .default_width(900)
-        .default_height(620)
+        .default_width(960)
+        .default_height(640)
         .content(&overlay)
         .build();
+    let narrow = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
+        adw::BreakpointConditionLengthType::MaxWidth,
+        700.0,
+        adw::LengthUnit::Px,
+    ));
+    narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
+    for row in [&device_row, &hash_row, &image_row, &theme_row] {
+        narrow.add_setter(
+            row,
+            "orientation",
+            Some(&gtk::Orientation::Vertical.to_value()),
+        );
+    }
+    window.add_breakpoint(narrow);
+    let selected_page = Rc::new(Cell::new(0_usize));
     let texts = UiTexts {
-        labels: vec![
-            (language_heading, "settings.language"),
-            (device_heading, "device.title"),
-            (wallet_heading, "wallet.title"),
-            (card_step, "wallet.step_card"),
-            (image_step, "wallet.step_image"),
-            (wallet_info, "wallet.info"),
-            (theme_info, "theme.info"),
-        ],
+        labels: nav_labels
+            .into_iter()
+            .chain([
+                (language_heading, "settings.language"),
+                (device_heading, "device.title"),
+                (card_step, "wallet.step_card"),
+                (image_step, "wallet.step_image"),
+                (wallet_info, "wallet.info"),
+                (theme_heading, "theme.title"),
+                (theme_info, "theme.info"),
+                (empty_title, "activity.ready"),
+            ])
+            .collect(),
         buttons: vec![
             (refresh.clone(), "device.refresh"),
             (choose_image.clone(), "wallet.choose_image"),
@@ -305,18 +434,41 @@ fn build_ui(app: &adw::Application) {
             (apply_theme.clone(), "theme.apply"),
             (scan.clone(), "activity.scan"),
         ],
-        expanders: vec![
-            (theme_expander.clone(), "theme.title"),
-            (activity_expander.clone(), "activity.title"),
-        ],
+        page_title: page_title.clone(),
+        content_page: content_page.clone(),
+        selected_page: selected_page.clone(),
         hash_entry: hash.clone(),
         settings_button,
         device_label: device_label.clone(),
+        status_label: status_label.clone(),
+        status_dot: status_dot.clone(),
+        dot_state: dot_state.clone(),
         image_label: image_label.clone(),
         theme_label: theme_label.clone(),
         tools_label,
     };
     texts.update(language.get(), &state.borrow());
+    {
+        let stack = stack.clone();
+        let split = split.clone();
+        let texts = texts.clone();
+        let language = language.clone();
+        let state = state.clone();
+        nav.connect_row_selected(move |_, row| {
+            let Some(row) = row else { return };
+            let index = row.index() as usize;
+            let name = ["device", "wallet", "theme", "activity"][index];
+            texts.selected_page.set(index);
+            texts.update(language.get(), &state.borrow());
+            stack.set_visible_child_name(name);
+            split.set_show_content(true);
+        });
+    }
+    {
+        let split = split.clone();
+        nav.connect_row_activated(move |_, _| split.set_show_content(true));
+    }
+    nav.select_row(nav.row_at_index(0).as_ref());
     for (choice, selected) in [
         (english_choice, i18n::Language::English),
         (korean_choice, i18n::Language::Korean),
@@ -350,18 +502,54 @@ fn build_ui(app: &adw::Application) {
         let state = state.clone();
         let overlay = overlay.clone();
         let label = device_label.clone();
+        let status_label = status_label.clone();
+        let status_dot = status_dot.clone();
+        let dot_state = dot_state.clone();
         let language = language.clone();
         refresh.connect_clicked(move |_| match core::list_devices() {
             Ok(devices) if devices.is_empty() => {
-                toast(&overlay, i18n::tr(language.get(), "device.not_found"))
+                let mut current = state.borrow_mut();
+                current.connection_status =
+                    if current.connection_status == ConnectionStatus::Waiting {
+                        ConnectionStatus::Waiting
+                    } else {
+                        ConnectionStatus::Disconnected
+                    };
+                current.device = None;
+                drop(current);
+                label.set_text(i18n::tr(language.get(), "device.none"));
+                status_label.set_text(i18n::tr(language.get(), "device.none"));
+                dot_state.set(state.borrow().connection_status);
+                status_dot.queue_draw();
+                toast(&overlay, i18n::tr(language.get(), "device.not_found"));
             }
             Ok(mut devices) => {
                 let d = devices.remove(0);
                 label.set_text(&format!("{} — {} (iOS {})", d.name, d.product, d.version));
-                state.borrow_mut().device = Some(d);
+                status_label.set_text(&d.name);
+                let mut current = state.borrow_mut();
+                current.device = Some(d);
+                current.connection_status = ConnectionStatus::Connected;
+                dot_state.set(current.connection_status);
+                status_dot.queue_draw();
                 toast(&overlay, i18n::tr(language.get(), "device.selected"));
             }
-            Err(e) => toast(&overlay, e.to_string()),
+            Err(e) => {
+                let mut current = state.borrow_mut();
+                current.connection_status =
+                    if current.connection_status == ConnectionStatus::Waiting {
+                        ConnectionStatus::Waiting
+                    } else {
+                        ConnectionStatus::Disconnected
+                    };
+                current.device = None;
+                drop(current);
+                label.set_text(i18n::tr(language.get(), "device.none"));
+                status_label.set_text(i18n::tr(language.get(), "device.none"));
+                dot_state.set(state.borrow().connection_status);
+                status_dot.queue_draw();
+                toast(&overlay, e.to_string());
+            }
         });
     }
     choose_file(
@@ -387,9 +575,9 @@ fn build_ui(app: &adw::Application) {
         let overlay = overlay.clone();
         let hash = hash.clone();
         let button = apply_skin.clone();
-        let log = log_view.buffer();
+        let log = log_list.clone();
         let language = language.clone();
-        let activity_expander = activity_expander.clone();
+        let activity_stack = activity_stack.clone();
         apply_skin.connect_clicked(move |_| {
             let mut s = state.borrow_mut();
             s.card_hash = hash.text().to_string();
@@ -410,7 +598,7 @@ fn build_ui(app: &adw::Application) {
                 toast(&overlay, i18n::tr(language.get(), "wallet.need_hash"));
                 return;
             }
-            activity_expander.set_expanded(true);
+            activity_stack.set_visible_child_name("log");
             run_task(
                 &button,
                 &overlay,
@@ -430,9 +618,9 @@ fn build_ui(app: &adw::Application) {
         let state = state.clone();
         let overlay = overlay.clone();
         let button = apply_theme.clone();
-        let log = log_view.buffer();
+        let log = log_list.clone();
         let language = language.clone();
-        let activity_expander = activity_expander.clone();
+        let activity_stack = activity_stack.clone();
         apply_theme.connect_clicked(move |_| {
             let s = state.borrow();
             let args = s
@@ -445,7 +633,7 @@ fn build_ui(app: &adw::Application) {
                 toast(&overlay, i18n::tr(language.get(), "theme.need_device_file"));
                 return;
             };
-            activity_expander.set_expanded(true);
+            activity_stack.set_visible_child_name("log");
             run_task(
                 &button,
                 &overlay,
@@ -458,23 +646,20 @@ fn build_ui(app: &adw::Application) {
     }
     {
         let overlay = overlay.clone();
-        let buffer = log_view.buffer();
+        let log = log_list.clone();
         let state = state.clone();
         let scan_button = scan.clone();
         let hash_entry = hash.clone();
         let language = language.clone();
-        let activity_expander = activity_expander.clone();
+        let activity_stack = activity_stack.clone();
         scan.connect_clicked(move |_| {
             let Some(device) = state.borrow().device.clone() else {
                 toast(&overlay, i18n::tr(language.get(), "activity.need_device"));
                 return;
             };
-            activity_expander.set_expanded(true);
+            activity_stack.set_visible_child_name("log");
             scan_button.set_sensitive(false);
-            buffer.insert_at_cursor(&format!(
-                "{}\n",
-                i18n::tr(language.get(), "activity.scanning")
-            ));
+            append_log(&log, i18n::tr(language.get(), "activity.scanning"));
             let (tx, rx) = mpsc::channel::<Option<String>>();
             thread::spawn(move || {
                 let child = std::process::Command::new("timeout")
@@ -494,7 +679,7 @@ fn build_ui(app: &adw::Application) {
                 let _ = tx.send(None);
             });
             let button = scan_button.clone();
-            let buffer = buffer.clone();
+            let log = log.clone();
             let hash = hash_entry.clone();
             let overlay = overlay.clone();
             let language = language.clone();
@@ -503,22 +688,19 @@ fn build_ui(app: &adw::Application) {
                     match item {
                         Some(value) => {
                             hash.set_text(&value);
-                            buffer.insert_at_cursor(&format!(
-                                "{}\n",
-                                i18n::format(
+                            append_log(
+                                &log,
+                                &i18n::format(
                                     language.get(),
                                     "activity.hash_found",
-                                    &[("hash", &value)]
-                                )
-                            ));
+                                    &[("hash", &value)],
+                                ),
+                            );
                             toast(&overlay, i18n::tr(language.get(), "activity.card_detected"));
                         }
                         None => {
                             button.set_sensitive(true);
-                            buffer.insert_at_cursor(&format!(
-                                "{}\n",
-                                i18n::tr(language.get(), "activity.scan_ended")
-                            ));
+                            append_log(&log, i18n::tr(language.get(), "activity.scan_ended"));
                             return glib::ControlFlow::Break;
                         }
                     }
@@ -533,13 +715,13 @@ fn build_ui(app: &adw::Application) {
 fn run_task(
     button: &gtk::Button,
     overlay: &adw::ToastOverlay,
-    log: &gtk::TextBuffer,
+    log: &gtk::ListBox,
     language: Rc<Cell<i18n::Language>>,
     label_key: &'static str,
     job: impl FnOnce() -> anyhow::Result<String> + Send + 'static,
 ) {
     button.set_sensitive(false);
-    log.insert_at_cursor(&format!("{}...\n", i18n::tr(language.get(), label_key)));
+    append_log(log, &format!("{}...", i18n::tr(language.get(), label_key)));
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let _ = tx.send(job().map_err(|e| format!("{e:#}")));
@@ -554,7 +736,7 @@ fn run_task(
                 Ok(value) => localize_success(language.get(), &value),
                 Err(error) => i18n::format(language.get(), "task.failed", &[("error", &error)]),
             };
-            log.insert_at_cursor(&format!("{message}\n"));
+            append_log(&log, &message);
             toast(&overlay, &message);
             glib::ControlFlow::Break
         }
@@ -580,9 +762,81 @@ fn localize_success(language: i18n::Language, message: &str) -> String {
     message.to_owned()
 }
 
-fn section_heading(css_class: &str) -> gtk::Label {
+fn install_styles() {
+    let provider = gtk::CssProvider::new();
+    provider.load_from_string(include_str!("../resources/style.css"));
+    gtk::style_context_add_provider_for_display(
+        &gtk::gdk::Display::default().expect("A display is required"),
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+}
+
+fn sidebar_row(icon_name: &str) -> (gtk::ListBoxRow, gtk::Label) {
+    let row = gtk::ListBoxRow::new();
+    row.add_css_class("aircard-nav-row");
+    let body = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let icon = gtk::Image::from_icon_name(icon_name);
+    icon.set_pixel_size(18);
+    let label = gtk::Label::new(None);
+    label.set_hexpand(true);
+    label.set_xalign(0.0);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    body.append(&icon);
+    body.append(&label);
+    row.set_child(Some(&body));
+    (row, label)
+}
+
+fn page_body() -> gtk::Box {
+    let body = gtk::Box::new(gtk::Orientation::Vertical, 24);
+    body.set_margin_top(30);
+    body.set_margin_bottom(30);
+    body.set_margin_start(28);
+    body.set_margin_end(28);
+    body
+}
+
+fn page_scroller(body: &gtk::Box) -> gtk::ScrolledWindow {
+    let clamp = adw::Clamp::new();
+    clamp.set_maximum_size(800);
+    clamp.set_vexpand(true);
+    clamp.set_child(Some(body));
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    scroll.set_vexpand(true);
+    scroll.set_child(Some(&clamp));
+    scroll
+}
+
+fn card_box() -> gtk::Box {
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    card.add_css_class("aircard-card");
+    card
+}
+
+fn card_row(left: &impl IsA<gtk::Widget>, right: &impl IsA<gtk::Widget>) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    row.append(left);
+    row.append(right);
+    row
+}
+
+fn append_log(list: &gtk::ListBox, text: &str) {
+    let row = gtk::ListBoxRow::new();
+    row.set_selectable(false);
+    row.set_activatable(false);
+    let label = gtk::Label::new(Some(text));
+    label.set_xalign(0.0);
+    label.set_wrap(true);
+    label.set_selectable(true);
+    row.set_child(Some(&label));
+    list.append(&row);
+}
+
+fn section_heading() -> gtk::Label {
     let heading = gtk::Label::new(None);
-    heading.add_css_class(css_class);
+    heading.add_css_class("aircard-section-label");
     heading.set_xalign(0.0);
     heading
 }

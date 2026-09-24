@@ -1,0 +1,90 @@
+.aircard-sidebar,
+.aircard-sidebar-header {
+  background-color: shade(@window_bg_color, 0.82);
+}
+
+.aircard-content,
+.aircard-content-header {
+  background-color: @window_bg_color;
+}
+
+.aircard-nav {
+  background-color: transparent;
+  padding: 10px 6px;
+}
+
+.aircard-nav-row {
+  border-radius: 10px;
+  margin: 3px 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  transition: background-color 150ms ease;
+}
+
+.aircard-nav-row:hover {
+  background-color: alpha(@window_fg_color, 0.06);
+}
+
+.aircard-nav-row:selected {
+  background-color: alpha(@window_fg_color, 0.11);
+  color: @window_fg_color;
+}
+
+.aircard-nav-row:selected label {
+  font-weight: 700;
+}
+
+.aircard-status {
+  padding: 16px;
+  color: alpha(@window_fg_color, 0.68);
+  font-size: 12px;
+}
+
+.aircard-card {
+  background-color: shade(@window_bg_color, 1.14);
+  border: 1px solid alpha(@window_fg_color, 0.10);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.aircard-section-label {
+  color: alpha(@window_fg_color, 0.55);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.aircard-muted {
+  color: alpha(@window_fg_color, 0.58);
+  font-size: 12px;
+}
+
+button.aircard-primary {
+  background-color: #e98767;
+  color: #241a17;
+  font-weight: 700;
+  border-radius: 9px;
+  transition: background-color 150ms ease;
+}
+
+button.aircard-primary:hover {
+  background-color: #f19a7d;
+}
+
+button.aircard-primary:active {
+  background-color: #d97556;
+}
+
+.aircard-empty {
+  min-height: 200px;
+  padding: 20px 16px;
+}
+
+.aircard-log-list {
+  background-color: transparent;
+}
+
+.aircard-log-list row {
+  background-color: transparent;
+  padding: 12px 4px;
+}

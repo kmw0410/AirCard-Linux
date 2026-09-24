@@ -37,9 +37,9 @@ The AppImage has been run on CachyOS x86_64; compatibility with other distributi
 ## How to Customize Apple Wallet Cards
 
 1. Connect and trust your iPhone, then open **Device** and click **Refresh devices**.
-2. Open **Activity**, click **Scan Wallet logs**, and open the card you want to customize in Wallet within 60 seconds. The detected hash is filled into the **Wallet Cards** tab. You can also paste a known hash there.
-3. In **Wallet Cards**, click **Choose skin image** and select a PNG, JPEG, or WebP image.
-4. Click **Apply card skin** and wait for the result in **Activity**.
+2. Under **Wallet cards**, click **Scan Wallet logs**, and open the card you want to customize in Wallet within 60 seconds. The detected hash is filled into the card hash field. You can also paste a known hash there.
+3. Click **Choose skin image** and select a PNG, JPEG, or WebP image.
+4. Click **Apply card skin** and check the result under **Activity**.
 5. Force-close **Wallet** on the iPhone and reopen the card to inspect the new artwork.
 
 The Wallet image-changing flow was confirmed on an iPhone running iOS 27.2; passcode themes were not tested. A message such as `Artwork sent; 0 cache entries removed` means the transfer finished but no matching cache entries were removed; check the card in Wallet to confirm the visible result.
@@ -54,8 +54,8 @@ For connection diagnostics, run `idevice_id -l` or `./AirCard-x86_64.AppImage --
 
 ## How to Apply Lockscreen Passcode Themes (.passthm)
 
-1. Connect and select your iPhone under **Device**.
-2. Open **Passcode Themes** and click **Choose .passthm theme**.
+1. Connect and select your iPhone in the device section.
+2. Expand **Passcode themes** and click **Choose .passthm theme**.
 3. Select an existing `.passthm` file and click **Apply passcode theme**.
 4. Restart the iPhone to reload the lock-screen cache and inspect the result.
 

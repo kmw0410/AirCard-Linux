@@ -37,9 +37,9 @@ AppImage는 CachyOS x86_64에서 실행해 보았습니다. 다른 배포판과�
 ## Apple Wallet 카드 이미지 변경
 
 1. iPhone을 연결하고 신뢰를 승인한 뒤 **Device**에서 **Refresh devices**를 누릅니다.
-2. **Activity**에서 **Scan Wallet logs**를 누르고, 60초 안에 Wallet에서 변경할 카드를 엽니다. 감지된 해시는 **Wallet Cards** 탭에 자동 입력됩니다. 이미 알고 있는 해시를 직접 붙여 넣어도 됩니다.
-3. **Wallet Cards**에서 **Choose skin image**를 누르고 PNG, JPEG 또는 WebP 이미지를 선택합니다.
-4. **Apply card skin**을 누른 뒤 **Activity**에서 결과를 확인합니다.
+2. **Wallet 카드**에서 **Wallet 로그 검색**을 누르고, 60초 안에 Wallet에서 변경할 카드를 엽니다. 감지된 해시는 카드 해시 입력란에 자동 입력됩니다. 이미 알고 있는 해시를 직접 붙여 넣어도 됩니다.
+3. **이미지 선택**을 누르고 PNG, JPEG 또는 WebP 이미지를 선택합니다.
+4. **카드 이미지 적용**을 누른 뒤 **활동**에서 결과를 확인합니다.
 5. iPhone에서 **Wallet**을 완전히 종료한 다음 카드를 다시 열어 변경된 이미지를 확인합니다.
 
 Wallet 이미지 변경은 iOS 27.2 iPhone에서 확인했습니다. 암호 테마는 테스트하지 않았습니다. `Artwork sent; 0 cache entries removed` 같은 메시지는 전송은 완료했지만 일치하는 캐시 항목은 제거하지 못했다는 뜻이므로, Wallet에서 실제 결과를 확인하세요.
@@ -54,9 +54,9 @@ iPhone 잠금을 해제하고 **Device**에서 해당 기기가 선택되어 있
 
 ## 잠금 화면 암호 테마(.passthm) 적용
 
-1. iPhone을 연결하고 **Device**에서 선택합니다.
-2. **Passcode Themes**에서 **Choose .passthm theme**을 누릅니다.
-3. 기존 `.passthm` 파일을 선택하고 **Apply passcode theme**을 누릅니다.
+1. iPhone을 연결하고 기기 영역에서 선택합니다.
+2. **암호 테마**를 펼치고 **.passthm 테마 선택**을 누릅니다.
+3. 기존 `.passthm` 파일을 선택하고 **암호 테마 적용**을 누릅니다.
 4. iPhone을 재시작해 잠금 화면 캐시를 다시 불러온 뒤 결과를 확인합니다.
 
 > [!NOTE]

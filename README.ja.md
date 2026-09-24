@@ -37,9 +37,9 @@ AppImage は CachyOS x86_64 で起動を確認しました。ほかのディス�
 ## Apple Wallet カード画像の変更方法
 
 1. iPhone を接続して信頼を承認し、**Device** で **Refresh devices** をクリックします。
-2. **Activity** で **Scan Wallet logs** をクリックし、60 秒以内に Wallet で変更したいカードを開きます。検出したハッシュは **Wallet Cards** タブに自動入力されます。既知のハッシュを貼り付けることもできます。
-3. **Wallet Cards** で **Choose skin image** をクリックし、PNG、JPEG、または WebP 画像を選びます。
-4. **Apply card skin** をクリックし、**Activity** で結果を確認します。
+2. **Walletカード** で **Walletログをスキャン** をクリックし、60 秒以内に Wallet で変更したいカードを開きます。検出したハッシュはカードのハッシュ入力欄に自動入力されます。既知のハッシュを貼り付けることもできます。
+3. **画像を選択** をクリックし、PNG、JPEG、または WebP 画像を選びます。
+4. **カード画像を適用** をクリックし、**アクティビティ** で結果を確認します。
 5. iPhone の **Wallet** を完全に終了してからカードを開き直し、新しい画像を確認します。
 
 Wallet の画像変更は iOS 27.2 の iPhone で確認済みです。パスコードテーマは未テストです。`Artwork sent; 0 cache entries removed` のようなメッセージは、転送は完了したものの一致するキャッシュ項目は削除されなかったことを意味します。Wallet で実際の表示を確認してください。
@@ -54,9 +54,9 @@ iPhone のロックを解除し、**Device** で対象デバイスが選択さ�
 
 ## ロック画面のパスコードテーマ (.passthm) の適用方法
 
-1. iPhone を接続し、**Device** で選択します。
-2. **Passcode Themes** を開いて **Choose .passthm theme** をクリックします。
-3. 既存の `.passthm` ファイルを選び、**Apply passcode theme** をクリックします。
+1. iPhone を接続し、デバイス欄で選択します。
+2. **パスコードテーマ** を展開し、**.passthmテーマを選択** をクリックします。
+3. 既存の `.passthm` ファイルを選び、**パスコードテーマを適用** をクリックします。
 4. iPhone を再起動してロック画面のキャッシュを再読み込みし、結果を確認します。
 
 > [!NOTE]
